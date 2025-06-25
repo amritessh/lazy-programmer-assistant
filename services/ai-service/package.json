@@ -2,6 +2,7 @@
     "name": "@lpa/ai-service",
     "version": "1.0.0",
     "description": "AI processing and code generation service for Lazy Programmer's Assistant",
+    "type": "module",
     "main": "src/index.js",
     "scripts": {
       "dev": "nodemon src/index.js",
