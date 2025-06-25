@@ -1,0 +1,30 @@
+{
+  "name": "lazy-programmer-assistant",
+  "version": "1.0.0",
+  "description": "AI agent for context-aware code generation from vague requests",
+  "scripts": {
+    "install:all": "npm run install:services && npm run install:frontend && npm run install:extension",
+    "install:services": "cd services/api-gateway && npm install && cd ../context-service && npm install && cd ../ai-service && npm install && cd ../learning-service && npm install && cd ../file-service && npm install",
+    "install:frontend": "cd frontend && npm install",
+    "install:extension": "cd vscode-extension && npm install",
+    "dev": "concurrently \"npm run dev:services\" \"npm run dev:frontend\"",
+    "dev:services": "concurrently \"npm run dev:api-gateway\" \"npm run dev:context\" \"npm run dev:ai\" \"npm run dev:learning\" \"npm run dev:file\"",
+    "dev:api-gateway": "cd services/api-gateway && npm run dev",
+    "dev:context": "cd services/context-service && npm run dev",
+    "dev:ai": "cd services/ai-service && npm run dev",
+    "dev:learning": "cd services/learning-service && npm run dev",
+    "dev:file": "cd services/file-service && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "build:all": "./scripts/build-all.sh",
+    "test:all": "./scripts/test-all.sh",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "supabase:start": "cd database && supabase start",
+    "supabase:stop": "cd database && supabase stop",
+    "setup": "./scripts/setup.sh"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0",
+    "nodemon": "^3.0.0"
+  }
+}
