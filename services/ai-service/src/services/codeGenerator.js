@@ -1,7 +1,7 @@
 // services/ai-service/src/services/codeGenerator.js
-const openaiClient = require('./openaiClient');
-const personalityEngine = require('./personalityEngine');
-const { SUPPORTED_LANGUAGES, FRAMEWORKS } = require('@lpa/shared');
+import openaiClient from './openaiClient.js';
+import personalityEngine from './personalityEngine.js';
+import { SUPPORTED_LANGUAGES, FRAMEWORKS } from '@lpa/shared';
 
 class CodeGenerator {
   constructor() {
@@ -198,28 +198,22 @@ Format as:
     // Extract code blocks
     const codeMatches = content.match(/```[\w]*\n([\s\S]*?)```/g);
     if (codeMatches && codeMatches.length > 0) {
-      // Take the largest code block (most likely the main code)
-      sections.code = codeMatches
-        .map(match => match.replace(/```[\w]*\n|```/g, ''))
-        .sort((a, b) => b.length - a.length)[0]
-        .trim();
+      // Get the first code block
+      const codeBlock = codeMatches[0];
+      sections.code = codeBlock.replace(/```[\w]*\n/, '').replace(/```$/, '').trim();
     }
 
     // Extract explanation
-    const explanationMatch = content.match(/\*\*Explanation:\*\*\s*(.*?)(?=\n\*\*|\n\n\*\*|$)/s);
+    const explanationMatch = content.match(/\*\*Explanation:\*\*\s*(.*?)(?=\n\*\*|\n\n|\*\*|$)/s);
     if (explanationMatch) {
       sections.explanation = explanationMatch[1].trim();
     }
 
     // Extract additional assumptions
-    const assumptionsMatch = content.match(/\*\*Additional Assumptions:\*\*\s*(.*?)$/s);
+    const assumptionsMatch = content.match(/\*\*Additional Assumptions:\*\*\s*(.*?)(?=\n\*\*|\n\n|\*\*|$)/s);
     if (assumptionsMatch) {
       const assumptionsText = assumptionsMatch[1].trim();
-      sections.assumptions = assumptionsText
-        .split('\n')
-        .filter(line => line.trim().startsWith('-'))
-        .map(line => line.replace(/^-\s*/, '').trim())
-        .filter(assumption => assumption.length > 0);
+      sections.assumptions = assumptionsText.split('\n').map(a => a.replace(/^[-*]\s*/, '').trim()).filter(a => a);
     }
 
     return sections;
@@ -238,16 +232,12 @@ Format as:
 
     if (!code || code.trim().length === 0) {
       validation.isValid = false;
-      validation.errors.push('No code was generated');
+      validation.errors.push('No code generated');
       return validation;
     }
 
-    // Basic syntax checks
-    try {
-      this.performBasicSyntaxCheck(code, context.primaryLanguage, validation);
-    } catch (error) {
-      validation.warnings.push(`Syntax validation failed: ${error.message}`);
-    }
+    // Basic syntax check
+    this.performBasicSyntaxCheck(code, context.primaryLanguage, validation);
 
     // Framework-specific checks
     if (context.framework) {
@@ -264,218 +254,217 @@ Format as:
   }
 
   /**
-   * Perform basic syntax checks
+   * Perform basic syntax validation
    */
   performBasicSyntaxCheck(code, language, validation) {
-    if (language === 'javascript' || language === 'typescript') {
-      // Check for common JS/TS issues
-      if (code.includes('var ')) {
-        validation.suggestions.push('Consider using "let" or "const" instead of "var"');
+    // Basic checks for common syntax issues
+    const checks = {
+      javascript: {
+        missingSemicolons: /[^;{}]\s*$/m,
+        unclosedBrackets: /[{([]/g,
+        unclosedQuotes: /["'`]/g
+      },
+      python: {
+        missingColons: /(def|class|if|for|while|try|except|finally)\s+[^:]+$/m,
+        indentationIssues: /^\s*[^#\s]/m
       }
-      
-      if (!code.includes('try') && !code.includes('catch') && code.length > 200) {
-        validation.suggestions.push('Consider adding error handling with try/catch');
-      }
-      
-      // Check for missing semicolons in statement lines
-      const lines = code.split('\n');
-      const statementLines = lines.filter(line => 
-        line.trim() && 
-        !line.trim().startsWith('//') && 
-        !line.trim().startsWith('/*') &&
-        !line.trim().endsWith('{') &&
-        !line.trim().endsWith('}') &&
-        line.includes('=') || line.includes('return') || line.includes('console.')
-      );
-      
-      const missingSemicolons = statementLines.filter(line => 
-        !line.trim().endsWith(';') && !line.trim().endsWith(',')
-      ).length;
-      
-      if (missingSemicolons > statementLines.length * 0.5) {
-        validation.suggestions.push('Consider adding semicolons for consistency');
-      }
+    };
+
+    const languageChecks = checks[language];
+    if (!languageChecks) return;
+
+    // Check for unclosed brackets
+    const openBrackets = (code.match(/[{([]/g) || []).length;
+    const closeBrackets = (code.match(/[})\]]/g) || []).length;
+    if (openBrackets !== closeBrackets) {
+      validation.warnings.push('Possible unclosed brackets or parentheses');
+    }
+
+    // Check for unclosed quotes
+    const quotes = code.match(/["'`]/g) || [];
+    if (quotes.length % 2 !== 0) {
+      validation.warnings.push('Possible unclosed quotes');
     }
   }
 
   /**
-   * Perform framework-specific checks
+   * Perform framework-specific validation
    */
   performFrameworkChecks(code, framework, validation) {
-    if (framework === 'react') {
-      if (!code.includes('import React')) {
-        validation.warnings.push('React component might be missing React import');
+    const frameworkChecks = {
+      'react': {
+        missingImport: /React|useState|useEffect/,
+        missingExport: /export\s+default/,
+        jsxSyntax: /<[A-Z][^>]*>/g
+      },
+      'express': {
+        missingImport: /express/,
+        routeHandler: /app\.(get|post|put|delete)/,
+        responseHandling: /res\.(json|send|status)/
       }
-      
-      if (code.includes('useState') && !code.includes('import') && !code.includes('React.useState')) {
-        validation.warnings.push('useState hook might need to be imported');
-      }
-      
-      if (code.includes('className') && code.includes('class=')) {
-        validation.errors.push('Mixed usage of className and class attributes');
-      }
-    }
-    
-    if (framework === 'express') {
-      if (!code.includes('res.') && code.includes('app.')) {
-        validation.warnings.push('Express route might be missing response handling');
-      }
-      
-      if (!code.includes('try') && !code.includes('catch')) {
-        validation.suggestions.push('Express routes should include error handling');
-      }
+    };
+
+    const checks = frameworkChecks[framework.toLowerCase()];
+    if (!checks) return;
+
+    // Check for required imports
+    if (checks.missingImport && !checks.missingImport.test(code)) {
+      validation.suggestions.push(`Consider importing required ${framework} dependencies`);
     }
   }
 
   /**
-   * Perform security checks
+   * Perform security validation
    */
   performSecurityChecks(code, validation) {
-    // Check for potential security issues
-    if (code.includes('eval(')) {
-      validation.warnings.push('Usage of eval() can be dangerous');
-    }
-    
-    if (code.includes('innerHTML') && !code.includes('sanitiz')) {
-      validation.warnings.push('Direct innerHTML usage might be vulnerable to XSS');
-    }
-    
-    if (code.includes('document.write')) {
-      validation.warnings.push('document.write can be dangerous and is deprecated');
-    }
-    
-    // SQL injection checks
-    if (code.includes('SELECT') && code.includes('+') && code.includes('req.')) {
-      validation.warnings.push('Potential SQL injection vulnerability - use parameterized queries');
-    }
+    const securityPatterns = [
+      { pattern: /eval\s*\(/, risk: 'high', message: 'eval() usage detected - security risk' },
+      { pattern: /innerHTML\s*=/, risk: 'medium', message: 'innerHTML usage detected - potential XSS risk' },
+      { pattern: /document\.write/, risk: 'medium', message: 'document.write() usage detected - potential XSS risk' },
+      { pattern: /sql\s*\+/, risk: 'medium', message: 'String concatenation in SQL detected - potential SQL injection' }
+    ];
+
+    securityPatterns.forEach(({ pattern, risk, message }) => {
+      if (pattern.test(code)) {
+        if (risk === 'high') {
+          validation.errors.push(message);
+          validation.isValid = false;
+        } else {
+          validation.warnings.push(message);
+        }
+      }
+    });
   }
 
   /**
-   * Perform best practices checks
+   * Perform best practices validation
    */
   performBestPracticesChecks(code, language, validation) {
-    // Check for console.log in production code
-    if (code.includes('console.log') && !code.includes('DEBUG')) {
-      validation.suggestions.push('Consider using proper logging instead of console.log');
-    }
-    
-    // Check for proper function naming
-    const functionNames = code.match(/function\s+([a-zA-Z_$][a-zA-Z0-9_$]*)/g);
-    if (functionNames) {
-      const badNames = functionNames.filter(name => 
-        name.includes('temp') || name.includes('test') || name.includes('foo')
-      );
-      if (badNames.length > 0) {
-        validation.suggestions.push('Consider using more descriptive function names');
+    const bestPractices = {
+      javascript: [
+        { pattern: /var\s+/, message: 'Consider using const/let instead of var' },
+        { pattern: /console\.log/, message: 'Consider removing console.log statements for production' },
+        { pattern: /function\s+\w+\s*\([^)]*\)\s*{/, message: 'Consider using arrow functions for consistency' }
+      ],
+      python: [
+        { pattern: /print\s*\(/, message: 'Consider using logging instead of print statements' },
+        { pattern: /except\s*:/, message: 'Consider specifying exception types' }
+      ]
+    };
+
+    const practices = bestPractices[language];
+    if (!practices) return;
+
+    practices.forEach(({ pattern, message }) => {
+      if (pattern.test(code)) {
+        validation.suggestions.push(message);
       }
-    }
-    
-    // Check for magic numbers
-    const numbers = code.match(/\b\d{2,}\b/g);
-    if (numbers && numbers.length > 2) {
-      validation.suggestions.push('Consider extracting magic numbers into named constants');
-    }
+    });
   }
 
   /**
-   * Generate alternative implementations
+   * Generate alternative approaches
    */
   async generateAlternatives(interpretation, context) {
     try {
-      const alternativePrompt = `Generate 2 alternative implementations for: "${interpretation.originalText}"
+      const prompt = `Generate 2-3 alternative approaches for this request: "${interpretation.originalText}"
 
-Original interpretation: ${interpretation.interpretation}
+Current approach: ${interpretation.interpretation}
 
-Context: ${context.primaryLanguage}${context.framework ? ` with ${context.framework}` : ''}
+Please provide alternatives that are:
+1. Different in approach or methodology
+2. Suitable for different use cases
+3. With pros and cons for each
 
-Provide 2 different approaches:
-1. **Alternative 1**: A simpler/more direct approach
-2. **Alternative 2**: A more robust/feature-rich approach
+Format as:
+**Alternative 1: [Name]**
+- Approach: [description]
+- Pros: [list]
+- Cons: [list]
+- When to use: [description]
 
-For each alternative, provide:
-- Brief description
-- Code snippet
-- When to use this approach`;
+**Alternative 2: [Name]**
+...`;
 
-      const response = await openaiClient.createCodeCompletion(alternativePrompt, {
-        language: context.primaryLanguage,
-        framework: context.framework,
-        maxTokens: 1000,
-        temperature: 0.6
+      const response = await openaiClient.createChatCompletion({
+        model: 'gpt-4',
+        messages: [
+          { role: 'system', content: 'You are a coding expert who provides alternative solutions.' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.7,
+        max_tokens: 1000
       });
 
       return this.parseAlternatives(response.choices[0].message.content);
     } catch (error) {
-      console.warn('Failed to generate alternatives:', error.message);
+      console.error('Error generating alternatives:', error);
       return [];
     }
   }
 
   /**
-   * Parse alternative implementations
+   * Parse alternatives from response
    */
   parseAlternatives(content) {
     const alternatives = [];
-    const altMatches = content.match(/\*\*Alternative \d+\*\*:[\s\S]*?(?=\*\*Alternative \d+\*\*:|$)/g);
-    
-    if (altMatches) {
-      altMatches.forEach((match, index) => {
-        const codeMatch = match.match(/```[\w]*\n([\s\S]*?)```/);
-        const descriptionMatch = match.match(/\*\*Alternative \d+\*\*:\s*(.*?)(?=```|\n\n|$)/s);
-        
-        if (codeMatch && descriptionMatch) {
-          alternatives.push({
-            id: index + 1,
-            description: descriptionMatch[1].trim(),
-            code: codeMatch[1].trim(),
-            whenToUse: this.extractWhenToUse(match)
-          });
-        }
-      });
-    }
-    
+    const alternativeBlocks = content.split(/\*\*Alternative \d+:/);
+
+    alternativeBlocks.slice(1).forEach(block => {
+      const lines = block.trim().split('\n');
+      const name = lines[0].trim();
+      
+      const alternative = {
+        name,
+        approach: this.extractWhenToUse(block, 'Approach:'),
+        pros: this.extractWhenToUse(block, 'Pros:'),
+        cons: this.extractWhenToUse(block, 'Cons:'),
+        whenToUse: this.extractWhenToUse(block, 'When to use:')
+      };
+
+      alternatives.push(alternative);
+    });
+
     return alternatives;
   }
 
   /**
-   * Extract "when to use" information
+   * Extract specific section from text
    */
-  extractWhenToUse(content) {
-    const whenMatch = content.match(/when to use[:\s]*(.*?)(?=\n\*\*|\n\n|$)/si);
-    return whenMatch ? whenMatch[1].trim() : 'General purpose implementation';
+  extractWhenToUse(content, section) {
+    const regex = new RegExp(`${section}\\s*(.*?)(?=\\n\\*\\*|\\n\\n|\\*\\*|$)`, 's');
+    const match = content.match(regex);
+    return match ? match[1].trim() : '';
   }
 
   /**
-   * Generate usage example
+   * Generate usage example for the code
    */
   generateUsageExample(code, context) {
-    // Simple heuristic-based usage example generation
-    if (context.framework === 'react' && code.includes('const ') && code.includes('export default')) {
-      const componentName = code.match(/const\s+(\w+)\s*=/);
-      if (componentName) {
-        return `// Usage example:
-import ${componentName[1]} from './${componentName[1]}';
+    const language = context.primaryLanguage || 'javascript';
+    
+    // Simple usage example based on code patterns
+    if (code.includes('function') || code.includes('def ')) {
+      return `// Usage example:
+// Call the function with appropriate parameters
+// Example: functionName(param1, param2);`;
+    }
 
-function App() {
-  return (
-    <div>
-      <${componentName[1]} />
-    </div>
-  );
-}`;
-      }
+    if (code.includes('class ')) {
+      return `// Usage example:
+// const instance = new ClassName();
+// instance.methodName();`;
     }
-    
-    if (context.primaryLanguage === 'javascript' && code.includes('function')) {
-      const functionName = code.match(/function\s+(\w+)/);
-      if (functionName) {
-        return `// Usage example:
-const result = ${functionName[1]}();
-console.log(result);`;
-      }
+
+    if (code.includes('export default')) {
+      return `// Usage example:
+// import ComponentName from './path/to/component';
+// <ComponentName prop1="value" />`;
     }
-    
-    return '// Usage example not available';
+
+    return `// Usage example:
+// Copy and paste this code into your project
+// Modify as needed for your specific use case`;
   }
 
   /**
@@ -483,34 +472,41 @@ console.log(result);`;
    */
   async improveCode(code, improvementType, context) {
     const improvementPrompts = {
-      performance: 'Optimize this code for better performance',
-      readability: 'Refactor this code for better readability and maintainability',
-      security: 'Improve the security of this code',
-      error_handling: 'Add proper error handling to this code',
-      testing: 'Add unit tests for this code'
+      'performance': 'Optimize this code for better performance',
+      'readability': 'Make this code more readable and maintainable',
+      'security': 'Improve the security of this code',
+      'error-handling': 'Add better error handling to this code',
+      'documentation': 'Add comprehensive documentation to this code'
     };
 
     const prompt = `${improvementPrompts[improvementType] || 'Improve this code'}:
 
-\`\`\`${context.primaryLanguage}
+\`\`\`${context.primaryLanguage || 'javascript'}
 ${code}
 \`\`\`
 
-Context: ${context.primaryLanguage}${context.framework ? ` with ${context.framework}` : ''}
+Please provide the improved version with explanations of the changes.`;
 
-Provide:
-1. The improved code
-2. Explanation of changes made
-3. Benefits of the improvements`;
+    try {
+      const response = await openaiClient.createChatCompletion({
+        model: 'gpt-4',
+        messages: [
+          { role: 'system', content: 'You are a code improvement expert.' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.3,
+        max_tokens: 2000
+      });
 
-    const response = await openaiClient.createCodeCompletion(prompt, {
-      language: context.primaryLanguage,
-      framework: context.framework,
-      temperature: 0.4
-    });
-
-    return this.parseGeneratedResponse(response.choices[0].message.content);
+      return response.choices[0].message.content;
+    } catch (error) {
+      console.error('Error improving code:', error);
+      throw new Error(`Failed to improve code: ${error.message}`);
+    }
   }
 }
 
-module.exports = new CodeGenerator();
+// Create and export a singleton instance
+const codeGenerator = new CodeGenerator();
+
+export default codeGenerator;

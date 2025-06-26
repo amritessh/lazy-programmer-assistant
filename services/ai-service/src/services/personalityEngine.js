@@ -1,5 +1,5 @@
 // services/ai-service/src/services/personalityEngine.js
-const { PERSONALITY_RESPONSES } = require('@lpa/shared');
+import { PERSONALITY_RESPONSES } from '@lpa/shared';
 
 class PersonalityEngine {
   constructor() {
@@ -560,4 +560,5 @@ class PersonalityEngine {
   }
 }
 
-module.exports = new PersonalityEngine();
+const personalityEngine = new PersonalityEngine();
+export default personalityEngine;
