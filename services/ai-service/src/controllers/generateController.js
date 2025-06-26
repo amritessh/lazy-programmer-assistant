@@ -1,9 +1,8 @@
-
-const { body, validationResult } = require('express-validator');
-const vagueParse = require('../services/vagueParse');
-const codeGenerator = require('../services/codeGenerator');
-const personalityEngine = require('../services/personalityEngine');
-const openaiClient = require('../services/openaiClient');
+import { body, validationResult } from 'express-validator';
+import vagueParse from '../services/vagueParse.js';
+import codeGenerator from '../services/codeGenerator.js';
+import personalityEngine from '../services/personalityEngine.js';
+import openaiClient from '../services/openaiClient.js';
 
 const generateController = {
   /**
@@ -212,7 +211,7 @@ const generateController = {
    */
   async improveCode(req, res) {
     try {
-      const { code, improvementType, context, userPreferences } = req.body;
+      const { code, context, userPreferences, improvementType } = req.body;
 
       if (!code) {
         return res.status(400).json({
@@ -221,27 +220,31 @@ const generateController = {
         });
       }
 
-      const improvement = await codeGenerator.improveCode(
-        code, 
-        improvementType || 'general', 
-        context
-      );
-
-      // Add personality to response
+      const improvementTypes = ['performance', 'readability', 'security', 'best-practices'];
+      const type = improvementTypes.includes(improvementType) ? improvementType : 'best-practices';
       const sassLevel = userPreferences?.aiPersonality?.sassLevel || 5;
-      const personalizedResponse = personalityEngine.addPersonality(
-        improvement.explanation,
-        `improve this ${improvementType || 'code'}`,
+
+      const response = await openaiClient.createImprovementCompletion(code, {
+        language: context?.primaryLanguage || 'javascript',
+        improvementType: type
+      });
+
+      const improvedCode = response.choices[0].message.content;
+      
+      // Add personality to improvement
+      const personalizedImprovement = personalityEngine.addPersonality(
+        improvedCode,
+        `improve this code for ${type}`,
         userPreferences?.aiPersonality
       );
 
       res.json({
         success: true,
         data: {
+          improvedCode: personalizedImprovement,
           originalCode: code,
-          improvedCode: improvement.code,
-          explanation: personalizedResponse,
-          improvementType: improvementType || 'general'
+          improvementType: type,
+          language: context?.primaryLanguage || 'javascript'
         },
         message: 'Code improved successfully'
       });
@@ -260,7 +263,7 @@ const generateController = {
    */
   async debugCode(req, res) {
     try {
-      const { code, error: errorMessage, context, userPreferences } = req.body;
+      const { code, error, context, userPreferences } = req.body;
 
       if (!code) {
         return res.status(400).json({
@@ -269,33 +272,30 @@ const generateController = {
         });
       }
 
-      const response = await openaiClient.createDebuggingCompletion(
-        code, 
-        errorMessage || 'Code is not working as expected', 
-        {
-          language: context?.primaryLanguage || 'javascript',
-          framework: context?.framework
-        }
-      );
+      const sassLevel = userPreferences?.aiPersonality?.sassLevel || 5;
+
+      const response = await openaiClient.createDebugCompletion(code, error, {
+        language: context?.primaryLanguage || 'javascript'
+      });
 
       const debugResult = response.choices[0].message.content;
       
-      // Add personality
-      const sassLevel = userPreferences?.aiPersonality?.sassLevel || 5;
-      const personalizedResult = personalityEngine.addPersonality(
+      // Add personality to debug response
+      const personalizedDebug = personalityEngine.addPersonality(
         debugResult,
-        'debug this broken code',
+        'debug this code',
         userPreferences?.aiPersonality
       );
 
       res.json({
         success: true,
         data: {
+          debugResult: personalizedDebug,
           originalCode: code,
-          debugResult: personalizedResult,
-          error: errorMessage
+          error: error || null,
+          language: context?.primaryLanguage || 'javascript'
         },
-        message: 'Code debugging completed'
+        message: 'Code debugged successfully'
       });
 
     } catch (error) {
@@ -308,95 +308,73 @@ const generateController = {
   },
 
   /**
-   * Helper: Should we generate code for this request?
+   * Helper method to determine if code generation is needed
    */
   shouldGenerateCode(parseResult) {
-    const codeActions = [
-      'debug_and_fix',
-      'create_ui_component',
-      'implement_frontend_feature',
-      'implement_backend_feature',
-      'general_implementation',
-      'improve_code'
+    const codeKeywords = [
+      'function', 'class', 'component', 'api', 'endpoint', 'database', 'query',
+      'algorithm', 'data structure', 'sort', 'filter', 'map', 'reduce',
+      'async', 'promise', 'callback', 'event', 'handler', 'middleware',
+      'validation', 'authentication', 'authorization', 'encryption',
+      'test', 'unit test', 'integration test', 'mock', 'stub'
     ];
 
-    return codeActions.includes(parseResult.specificAction) || 
-           parseResult.interpretation.toLowerCase().includes('code') ||
-           parseResult.interpretation.toLowerCase().includes('implement') ||
-           parseResult.interpretation.toLowerCase().includes('create') ||
-           parseResult.interpretation.toLowerCase().includes('fix');
+    const text = parseResult.interpretation.toLowerCase();
+    return codeKeywords.some(keyword => text.includes(keyword)) || 
+           parseResult.specificAction?.includes('code') ||
+           parseResult.specificAction?.includes('function') ||
+           parseResult.specificAction?.includes('class');
   },
 
   /**
-   * Helper: Build code response
+   * Build response with generated code
    */
   buildCodeResponse(codeResult, sassLevel) {
-    let response = '';
+    const sassResponses = [
+      "Here's your code, hot off the press! 🔥",
+      "Ta-da! Your code is ready to rock! 🚀",
+      "Boom! Code generated with style! 💅",
+      "Your wish is my command! Here's the code! ✨",
+      "Code magic happening right here! 🪄"
+    ];
+
+    const response = sassResponses[sassLevel % sassResponses.length] || sassResponses[0];
     
-    // Sassy intro
-    response += personalityEngine.generateCodeIntro(sassLevel, 'code');
-    response += '\n\n';
-    
-    // Code block
-    response += '```' + (codeResult.language || 'javascript') + '\n';
-    response += codeResult.code;
-    response += '\n```\n\n';
-    
-    // Explanation
-    response += codeResult.explanation;
-    
-    // Assumptions
-    if (codeResult.assumptions && codeResult.assumptions.length > 0) {
-      response += '\n\n' + personalityEngine.generateAssumptionText(codeResult.assumptions, sassLevel);
-    }
-    
-    // Usage example
-    if (codeResult.usage) {
-      response += '\n\n**Usage:**\n```' + (codeResult.language || 'javascript') + '\n';
-      response += codeResult.usage;
-      response += '\n```';
-    }
-    
-    return response;
+    return `${response}\n\n${codeResult.code}\n\n${codeResult.explanation || ''}`;
   },
 
   /**
-   * Helper: Build clarification response
+   * Build clarification response
    */
   buildClarificationResponse(parseResult, sassLevel) {
-    let response = personalityEngine.generateClarifyingQuestions(
-      parseResult.clarifyingQuestions,
-      sassLevel
-    );
+    const sassResponses = [
+      "I need a bit more info to help you properly! 🤔",
+      "Could you be a bit more specific? I'm not a mind reader! 😅",
+      "Hmm, I'm not quite sure what you mean. Can you clarify? 🤷‍♂️",
+      "I'm getting mixed signals here. Help me out! 🙏",
+      "Let's get on the same page! What exactly do you need? 💭"
+    ];
+
+    const response = sassResponses[sassLevel % sassResponses.length] || sassResponses[0];
     
-    if (parseResult.alternativeInterpretations && parseResult.alternativeInterpretations.length > 0) {
-      response += '\n\nOr maybe you meant one of these:\n';
-      parseResult.alternativeInterpretations.forEach((alt, index) => {
-        response += `${index + 1}. ${alt.description}\n`;
-      });
-    }
-    
-    return response;
+    return `${response}\n\n${parseResult.clarifyingQuestions.join('\n')}`;
   },
 
   /**
-   * Helper: Build interpretation response
+   * Build interpretation response
    */
   buildInterpretationResponse(parseResult, sassLevel) {
-    let response = `I think you want to: ${parseResult.interpretation}`;
+    const sassResponses = [
+      "Here's what I think you're asking for! 💡",
+      "Let me break this down for you! 📝",
+      "I interpreted your request as follows! 🎯",
+      "Here's my take on what you need! 🤓",
+      "Let me translate that for you! 🔄"
+    ];
+
+    const response = sassResponses[sassLevel % sassResponses.length] || sassResponses[0];
     
-    if (parseResult.suggestedActions && parseResult.suggestedActions.length > 0) {
-      response += '\n\nHere\'s what I suggest:\n';
-      parseResult.suggestedActions.forEach((action, index) => {
-        response += `${index + 1}. ${action}\n`;
-      });
-    }
-    
-    if (parseResult.assumptions && parseResult.assumptions.length > 0) {
-      response += '\n\n' + personalityEngine.generateAssumptionText(parseResult.assumptions, sassLevel);
-    }
-    
-    return response;
+    return `${response}\n\n${parseResult.interpretation}`;
   }
 };
 
@@ -419,4 +397,4 @@ generateController.validateGenerateRequest = [
     .withMessage('User preferences must be an object')
 ];
 
-module.exports = generateController;
+export default generateController;
