@@ -3,10 +3,14 @@ import { createClient } from '@supabase/supabase-js';
 
 const router = express.Router();
 
-// Initialize Supabase client
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Initialize Supabase client only if environment variables are available
+let supabase = null;
+if (process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY) {
+  supabase = createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_ANON_KEY
+  );
+}
 
 // Register user
 router.post('/register', async (req, res) => {
@@ -17,6 +21,13 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({
         success: false,
         error: 'Email and password are required'
+      });
+    }
+
+    if (!supabase) {
+      return res.status(503).json({
+        success: false,
+        error: 'Authentication service not configured'
       });
     }
 
@@ -37,13 +48,11 @@ router.post('/register', async (req, res) => {
       });
     }
 
-    res.status(201).json({
+    res.json({
       success: true,
-      message: 'User registered successfully',
-      user: {
-        id: data.user.id,
-        email: data.user.email,
-        name: data.user.user_metadata?.name
+      data: {
+        user: data.user,
+        message: 'User registered successfully'
       }
     });
   } catch (error) {
@@ -67,6 +76,13 @@ router.post('/login', async (req, res) => {
       });
     }
 
+    if (!supabase) {
+      return res.status(503).json({
+        success: false,
+        error: 'Authentication service not configured'
+      });
+    }
+
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password
@@ -81,15 +97,10 @@ router.post('/login', async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Login successful',
-      user: {
-        id: data.user.id,
-        email: data.user.email,
-        name: data.user.user_metadata?.name
-      },
-      session: {
-        access_token: data.session.access_token,
-        refresh_token: data.session.refresh_token
+      data: {
+        user: data.user,
+        session: data.session,
+        message: 'Login successful'
       }
     });
   } catch (error) {
@@ -104,6 +115,13 @@ router.post('/login', async (req, res) => {
 // Logout user
 router.post('/logout', async (req, res) => {
   try {
+    if (!supabase) {
+      return res.status(503).json({
+        success: false,
+        error: 'Authentication service not configured'
+      });
+    }
+
     const { error } = await supabase.auth.signOut();
 
     if (error) {
@@ -129,30 +147,37 @@ router.post('/logout', async (req, res) => {
 // Get current user
 router.get('/me', async (req, res) => {
   try {
-    const token = req.headers.authorization?.replace('Bearer ', '');
-    
-    if (!token) {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({
         success: false,
-        error: 'No token provided'
+        error: 'No valid authorization token provided'
       });
     }
 
+    if (!supabase) {
+      return res.status(503).json({
+        success: false,
+        error: 'Authentication service not configured'
+      });
+    }
+
+    const token = authHeader.substring(7);
     const { data: { user }, error } = await supabase.auth.getUser(token);
 
     if (error || !user) {
       return res.status(401).json({
         success: false,
-        error: 'Invalid token'
+        error: 'Invalid or expired token'
       });
     }
 
     res.json({
       success: true,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.user_metadata?.name
+      data: {
+        user,
+        message: 'User profile retrieved successfully'
       }
     });
   } catch (error) {
@@ -203,4 +228,4 @@ router.post('/refresh', async (req, res) => {
   }
 });
 
-export default router; 
+export default router;
