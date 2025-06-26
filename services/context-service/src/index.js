@@ -1,10 +1,10 @@
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const winston = require('winston');
+import 'dotenv/config';
+import express from 'express';
+import cors from 'cors';
+import winston from 'winston';
 
 // Import controllers
-const contextController = require('./controllers/contextController');
+import contextController from './controllers/contextController.js';
 
 const app = express();
 const PORT = process.env.CONTEXT_SERVICE_PORT || 3002;
@@ -86,4 +86,4 @@ process.on('SIGINT', () => {
   process.exit(0);
 });
 
-module.exports = app;
+export default app;

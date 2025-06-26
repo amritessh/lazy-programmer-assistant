@@ -37,6 +37,13 @@ export const API_ROUTES = {
     FILE_SERVICE: 3005,
   } as const;
   
+  export const CONFIDENCE_THRESHOLDS = {
+    LOW: 0.3,
+    MEDIUM: 0.6,
+    HIGH: 0.8,
+    VERY_HIGH: 0.9,
+  } as const;
+  
   export const LAZY_PHRASES = {
     // Thing references
     THING_REFERENCES: [
@@ -198,23 +205,46 @@ export const API_ROUTES = {
     CODE_GENERATED: 'Code generated successfully',
     CONTEXT_ANALYZED: 'Project context analyzed successfully',
     FILE_UPLOADED: 'Files uploaded successfully',
-    PREFERENCES_UPDATED: 'Preferences updated successfully',
     PROJECT_CREATED: 'Project created successfully',
-    SESSION_CREATED: 'Chat session created successfully',
+    USER_REGISTERED: 'User registered successfully',
+    USER_LOGGED_IN: 'User logged in successfully',
+    PREFERENCES_UPDATED: 'User preferences updated successfully',
   } as const;
   
-  export const LIMITS = {
-    MAX_FILE_SIZE: 10 * 1024 * 1024, // 10MB
-    MAX_FILES_PER_UPLOAD: 50,
-    MAX_MESSAGE_LENGTH: 10000,
-    MAX_CONTEXT_FILES: 100,
-    MAX_SESSIONS_PER_USER: 100,
-    RATE_LIMIT_REQUESTS: 100,
-    RATE_LIMIT_WINDOW: 60 * 1000, // 1 minute
+  export const HTTP_STATUS_CODES = {
+    OK: 200,
+    CREATED: 201,
+    NO_CONTENT: 204,
+    BAD_REQUEST: 400,
+    UNAUTHORIZED: 401,
+    FORBIDDEN: 403,
+    NOT_FOUND: 404,
+    CONFLICT: 409,
+    UNPROCESSABLE_ENTITY: 422,
+    INTERNAL_SERVER_ERROR: 500,
+    SERVICE_UNAVAILABLE: 503,
   } as const;
   
-  export const CONFIDENCE_THRESHOLDS = {
-    HIGH: 0.8,
-    MEDIUM: 0.6,
-    LOW: 0.4,
+  export const VALIDATION_RULES = {
+    MESSAGE_MAX_LENGTH: 10000,
+    PROJECT_NAME_MAX_LENGTH: 255,
+    FILE_NAME_MAX_LENGTH: 255,
+    USER_NAME_MAX_LENGTH: 100,
+    EMAIL_MAX_LENGTH: 255,
+    PASSWORD_MIN_LENGTH: 8,
+    PASSWORD_MAX_LENGTH: 128,
+  } as const;
+  
+  export const RATE_LIMITS = {
+    CHAT_MESSAGES_PER_MINUTE: 30,
+    FILE_UPLOADS_PER_HOUR: 100,
+    AI_REQUESTS_PER_MINUTE: 20,
+    CONTEXT_ANALYSIS_PER_HOUR: 50,
+  } as const;
+  
+  export const CACHE_DURATIONS = {
+    PROJECT_CONTEXT: 300, // 5 minutes
+    USER_PREFERENCES: 3600, // 1 hour
+    FILE_ANALYSIS: 1800, // 30 minutes
+    AI_RESPONSES: 600, // 10 minutes
   } as const;

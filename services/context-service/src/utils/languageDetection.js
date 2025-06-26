@@ -1,5 +1,5 @@
 // services/context-service/src/utils/languageDetection.js
-const path = require('path');
+import path from 'path';
 
 class LanguageDetection {
   constructor() {
@@ -227,7 +227,7 @@ class LanguageDetection {
   }
 
   /**
-   * Detect language from file extension
+   * Detect language by file extension
    */
   detectByExtension(filePath) {
     const ext = path.extname(filePath).toLowerCase();
@@ -238,43 +238,35 @@ class LanguageDetection {
       }
     }
     
-    return null;
+    return 'unknown';
   }
 
   /**
-   * Detect language from file content
+   * Detect language by file content
    */
   detectByContent(content, filePath = null) {
     if (!content || typeof content !== 'string') {
-      return null;
+      return filePath ? this.detectByExtension(filePath) : 'unknown';
     }
 
     const scores = {};
     const contentLower = content.toLowerCase();
-    const contentSample = content.substring(0, 2000); // First 2KB for performance
 
-    // Score each language based on keyword and pattern matches
+    // Score each language based on patterns and keywords
     for (const [language, config] of Object.entries(this.languageIndicators)) {
       let score = 0;
 
-      // Keyword matching
+      // Check keywords
       for (const keyword of config.keywords) {
-        const keywordLower = keyword.toLowerCase();
-        const matches = (contentLower.match(new RegExp(keywordLower, 'g')) || []).length;
-        score += matches * 2; // Keywords are worth 2 points each
+        if (contentLower.includes(keyword.toLowerCase())) {
+          score += 1;
+        }
       }
 
-      // Pattern matching
+      // Check patterns
       for (const pattern of config.patterns) {
-        const matches = (contentSample.match(pattern) || []).length;
-        score += matches * 3; // Patterns are worth 3 points each
-      }
-
-      // Bonus for file extension match
-      if (filePath) {
-        const ext = path.extname(filePath).toLowerCase();
-        if (config.extensions.includes(ext)) {
-          score += 10; // Extension match is worth 10 points
+        if (pattern.test(content)) {
+          score += 2;
         }
       }
 
@@ -285,18 +277,15 @@ class LanguageDetection {
 
     // Return the language with the highest score
     if (Object.keys(scores).length === 0) {
-      return null;
+      return filePath ? this.detectByExtension(filePath) : 'unknown';
     }
 
-    const sortedScores = Object.entries(scores).sort(([,a], [,b]) => b - a);
-    const [topLanguage, topScore] = sortedScores[0];
-
-    // Only return if confidence is reasonable
-    return topScore >= 5 ? topLanguage : null;
+    const sorted = Object.entries(scores).sort(([, a], [, b]) => b - a);
+    return sorted[0][0];
   }
 
   /**
-   * Detect framework within a language
+   * Detect framework used in the code
    */
   detectFramework(content, language) {
     if (!content || !language || !this.languageIndicators[language]) {
@@ -304,141 +293,88 @@ class LanguageDetection {
     }
 
     const config = this.languageIndicators[language];
-    if (!config.frameworks) {
-      return null;
-    }
-
+    const frameworks = config.frameworks || {};
     const contentLower = content.toLowerCase();
-    const frameworkScores = {};
 
-    // Score each framework based on indicator matches
-    for (const [framework, indicators] of Object.entries(config.frameworks)) {
-      let score = 0;
-
+    for (const [framework, indicators] of Object.entries(frameworks)) {
       for (const indicator of indicators) {
-        const indicatorLower = indicator.toLowerCase();
-        if (contentLower.includes(indicatorLower)) {
-          score += 1;
+        if (contentLower.includes(indicator.toLowerCase())) {
+          return framework;
         }
       }
-
-      if (score > 0) {
-        frameworkScores[framework] = score;
-      }
     }
 
-    if (Object.keys(frameworkScores).length === 0) {
-      return null;
-    }
-
-    // Return framework with highest score
-    const sortedFrameworks = Object.entries(frameworkScores)
-      .sort(([,a], [,b]) => b - a);
-    
-    return sortedFrameworks[0][0];
+    return null;
   }
 
   /**
-   * Analyze multiple files to determine project languages
+   * Analyze languages used in a project
    */
   analyzeProjectLanguages(files) {
-    const languageScores = {};
-    const frameworkScores = {};
-    const totalFiles = files.length;
+    const languageStats = {};
+    const frameworkStats = {};
 
-    for (const file of files) {
-      // Skip certain file types
+    files.forEach(file => {
       if (this.shouldSkipFile(file)) {
-        continue;
+        return;
       }
 
-      // Detect language by extension first
-      let language = this.detectByExtension(file.path || file.name);
-      
-      // If we have content, use content detection
-      if (file.content && file.content.trim()) {
-        const contentLanguage = this.detectByContent(file.content, file.path || file.name);
-        if (contentLanguage) {
-          language = contentLanguage; // Content detection overrides extension
+      // Detect language
+      let language = 'unknown';
+      if (file.content) {
+        language = this.detectByContent(file.content, file.path);
+      } else {
+        language = this.detectByExtension(file.path);
+      }
+
+      // Count language usage
+      languageStats[language] = (languageStats[language] || 0) + 1;
+
+      // Detect framework if we have content
+      if (file.content && language !== 'unknown') {
+        const framework = this.detectFramework(file.content, language);
+        if (framework) {
+          frameworkStats[framework] = (frameworkStats[framework] || 0) + 1;
         }
       }
+    });
 
-      if (language) {
-        languageScores[language] = (languageScores[language] || 0) + 1;
+    // Sort by usage
+    const sortedLanguages = Object.entries(languageStats)
+      .sort(([, a], [, b]) => b - a)
+      .map(([lang, count]) => ({ language: lang, count }));
 
-        // Detect framework if we have content
-        if (file.content) {
-          const framework = this.detectFramework(file.content, language);
-          if (framework) {
-            const key = `${language}:${framework}`;
-            frameworkScores[key] = (frameworkScores[key] || 0) + 1;
-          }
-        }
-      }
-    }
-
-    // Calculate percentages and determine primary/secondary languages
-    const sortedLanguages = Object.entries(languageScores)
-      .sort(([,a], [,b]) => b - a)
-      .map(([lang, count]) => ({
-        language: lang,
-        fileCount: count,
-        percentage: Math.round((count / totalFiles) * 100)
-      }));
-
-    // Determine primary framework
-    let primaryFramework = null;
-    if (Object.keys(frameworkScores).length > 0) {
-      const sortedFrameworks = Object.entries(frameworkScores)
-        .sort(([,a], [,b]) => b - a);
-      
-      const [frameworkKey, count] = sortedFrameworks[0];
-      const [language, framework] = frameworkKey.split(':');
-      
-      // Only consider it primary if it appears in multiple files
-      if (count >= 2) {
-        primaryFramework = framework;
-      }
-    }
+    const sortedFrameworks = Object.entries(frameworkStats)
+      .sort(([, a], [, b]) => b - a)
+      .map(([framework, count]) => ({ framework, count }));
 
     return {
-      primary: sortedLanguages[0]?.language || null,
-      secondary: sortedLanguages.slice(1, 3).map(l => l.language),
-      all: sortedLanguages,
-      framework: primaryFramework,
-      scores: languageScores,
-      frameworkScores
+      languages: sortedLanguages,
+      frameworks: sortedFrameworks,
+      primaryLanguage: sortedLanguages[0]?.language || 'unknown',
+      primaryFramework: sortedFrameworks[0]?.framework || null
     };
   }
 
   /**
-   * Check if file should be skipped in language analysis
+   * Check if file should be skipped in analysis
    */
   shouldSkipFile(file) {
-    const fileName = (file.name || file.path || '').toLowerCase();
-    const filePath = (file.path || '').toLowerCase();
-    
-    // Skip common non-code files
     const skipPatterns = [
-      /package-lock\.json$/,
-      /yarn\.lock$/,
-      /\.min\.(js|css)$/,
-      /\.map$/,
-      /\.log$/,
-      /\.tmp$/,
-      /\.cache$/,
-      /readme\.(md|txt)$/,
-      /license$/,
-      /changelog/,
-      /\.git/,
-      /node_modules/,
-      /dist/,
-      /build/,
-      /coverage/
+      'node_modules',
+      '.git',
+      'dist',
+      'build',
+      '.next',
+      'coverage',
+      '*.min.js',
+      '*.min.css',
+      'package-lock.json',
+      'yarn.lock'
     ];
 
     return skipPatterns.some(pattern => 
-      pattern.test(fileName) || pattern.test(filePath)
+      file.path.includes(pattern) || file.name.includes(pattern)
     );
   }
 
@@ -446,157 +382,92 @@ class LanguageDetection {
    * Get confidence score for language detection
    */
   getConfidenceScore(detectedLanguage, file) {
-    let confidence = 0.5; // Base confidence
-
-    // Boost confidence for extension match
-    if (file.path || file.name) {
-      const ext = path.extname(file.path || file.name).toLowerCase();
-      const config = this.languageIndicators[detectedLanguage];
-      if (config && config.extensions.includes(ext)) {
-        confidence += 0.3;
-      }
+    if (detectedLanguage === 'unknown') {
+      return 0;
     }
 
-    // Boost confidence if we have content
-    if (file.content && file.content.trim()) {
-      confidence += 0.2;
-      
-      // Additional boost for strong content indicators
-      const contentLanguage = this.detectByContent(file.content);
-      if (contentLanguage === detectedLanguage) {
-        confidence += 0.2;
-      }
+    let score = 0.5; // Base score
+
+    // Boost score if extension matches
+    const extensionLanguage = this.detectByExtension(file.path);
+    if (extensionLanguage === detectedLanguage) {
+      score += 0.3;
     }
 
-    return Math.min(1.0, confidence);
+    // Boost score if we have content
+    if (file.content) {
+      score += 0.2;
+    }
+
+    return Math.min(score, 1.0);
   }
 
   /**
-   * Detect build tools and package managers
+   * Detect build tools used in the project
    */
   detectBuildTools(files) {
-    const buildTools = {
-      packageManagers: [],
-      buildSystems: [],
-      taskRunners: []
+    const buildTools = [];
+
+    const toolIndicators = {
+      'webpack': ['webpack.config.js', 'webpack.config.ts'],
+      'vite': ['vite.config.js', 'vite.config.ts'],
+      'rollup': ['rollup.config.js', 'rollup.config.ts'],
+      'parcel': ['.parcelrc', 'parcel.config.js'],
+      'gulp': ['gulpfile.js', 'gulpfile.ts'],
+      'grunt': ['Gruntfile.js', 'Gruntfile.ts'],
+      'make': ['Makefile'],
+      'cmake': ['CMakeLists.txt'],
+      'maven': ['pom.xml'],
+      'gradle': ['build.gradle', 'build.gradle.kts'],
+      'cargo': ['Cargo.toml'],
+      'npm': ['package.json'],
+      'yarn': ['yarn.lock', 'package.json'],
+      'pip': ['requirements.txt', 'setup.py'],
+      'poetry': ['pyproject.toml'],
+      'composer': ['composer.json']
     };
 
-    for (const file of files) {
-      const fileName = (file.name || '').toLowerCase();
-      
-      // Package managers
-      if (fileName === 'package.json') buildTools.packageManagers.push('npm');
-      if (fileName === 'yarn.lock') buildTools.packageManagers.push('yarn');
-      if (fileName === 'pnpm-lock.yaml') buildTools.packageManagers.push('pnpm');
-      if (fileName === 'requirements.txt') buildTools.packageManagers.push('pip');
-      if (fileName === 'cargo.toml') buildTools.packageManagers.push('cargo');
-      if (fileName === 'go.mod') buildTools.packageManagers.push('go modules');
-      if (fileName === 'composer.json') buildTools.packageManagers.push('composer');
-      if (fileName === 'gemfile') buildTools.packageManagers.push('bundler');
-
-      // Build systems
-      if (fileName === 'webpack.config.js') buildTools.buildSystems.push('webpack');
-      if (fileName === 'vite.config.js') buildTools.buildSystems.push('vite');
-      if (fileName === 'rollup.config.js') buildTools.buildSystems.push('rollup');
-      if (fileName === 'parcel.config.js') buildTools.buildSystems.push('parcel');
-      if (fileName === 'tsconfig.json') buildTools.buildSystems.push('typescript');
-      if (fileName === 'babel.config.js') buildTools.buildSystems.push('babel');
-      if (fileName === 'makefile') buildTools.buildSystems.push('make');
-      if (fileName === 'cmake.txt') buildTools.buildSystems.push('cmake');
-      if (fileName === 'build.gradle') buildTools.buildSystems.push('gradle');
-      if (fileName === 'pom.xml') buildTools.buildSystems.push('maven');
-
-      // Task runners
-      if (fileName === 'gulpfile.js') buildTools.taskRunners.push('gulp');
-      if (fileName === 'gruntfile.js') buildTools.taskRunners.push('grunt');
-      if (fileName === 'rakefile') buildTools.taskRunners.push('rake');
-      
-      // Check package.json scripts
-      if (fileName === 'package.json' && file.content) {
-        try {
-          const pkg = JSON.parse(file.content);
-          if (pkg.scripts) {
-            const scripts = Object.keys(pkg.scripts);
-            if (scripts.includes('build')) buildTools.taskRunners.push('npm scripts');
-            if (scripts.some(s => s.includes('webpack'))) buildTools.buildSystems.push('webpack');
-            if (scripts.some(s => s.includes('vite'))) buildTools.buildSystems.push('vite');
-          }
-        } catch (e) {
-          // Invalid JSON, skip
+    for (const [tool, indicators] of Object.entries(toolIndicators)) {
+      for (const indicator of indicators) {
+        if (files.some(f => f.name === indicator)) {
+          buildTools.push(tool);
+          break;
         }
       }
     }
-
-    // Remove duplicates
-    buildTools.packageManagers = [...new Set(buildTools.packageManagers)];
-    buildTools.buildSystems = [...new Set(buildTools.buildSystems)];
-    buildTools.taskRunners = [...new Set(buildTools.taskRunners)];
 
     return buildTools;
   }
 
   /**
-   * Detect testing frameworks
+   * Detect testing frameworks used in the project
    */
   detectTestingFrameworks(files) {
     const testingFrameworks = [];
 
-    for (const file of files) {
-      const fileName = (file.name || '').toLowerCase();
-      const filePath = (file.path || '').toLowerCase();
-      
-      // Check for test files
-      if (fileName.includes('test') || fileName.includes('spec') || 
-          filePath.includes('/test/') || filePath.includes('/tests/') ||
-          filePath.includes('/__tests__/')) {
-        
-        // Analyze content for testing frameworks
-        if (file.content) {
-          const content = file.content.toLowerCase();
-          
-          // JavaScript/TypeScript testing frameworks
-          if (content.includes('jest') || content.includes('describe(') || content.includes('it(')) {
-            testingFrameworks.push('jest');
-          }
-          if (content.includes('mocha') || content.includes('describe(')) {
-            testingFrameworks.push('mocha');
-          }
-          if (content.includes('jasmine')) {
-            testingFrameworks.push('jasmine');
-          }
-          if (content.includes('cypress')) {
-            testingFrameworks.push('cypress');
-          }
-          if (content.includes('playwright')) {
-            testingFrameworks.push('playwright');
-          }
-          
-          // Python testing frameworks
-          if (content.includes('pytest') || content.includes('def test_')) {
-            testingFrameworks.push('pytest');
-          }
-          if (content.includes('unittest') || content.includes('TestCase')) {
-            testingFrameworks.push('unittest');
-          }
-          
-          // Java testing frameworks
-          if (content.includes('junit') || content.includes('@test')) {
-            testingFrameworks.push('junit');
-          }
-          if (content.includes('testng')) {
-            testingFrameworks.push('testng');
-          }
+    const frameworkIndicators = {
+      'jest': ['jest.config.js', 'jest.config.ts', '.jestrc'],
+      'mocha': ['mocha.opts', '.mocharc.js', '.mocharc.json'],
+      'cypress': ['cypress.json', 'cypress.config.js'],
+      'playwright': ['playwright.config.js', 'playwright.config.ts'],
+      'selenium': ['selenium.config.js'],
+      'pytest': ['pytest.ini', 'conftest.py'],
+      'unittest': ['test_*.py'],
+      'junit': ['pom.xml', 'build.gradle'],
+      'rspec': ['spec_helper.rb', '.rspec'],
+      'minitest': ['test_*.rb']
+    };
+
+    for (const [framework, indicators] of Object.entries(frameworkIndicators)) {
+      for (const indicator of indicators) {
+        if (files.some(f => f.name === indicator || f.name.includes(indicator))) {
+          testingFrameworks.push(framework);
+          break;
         }
       }
-      
-      // Check configuration files
-      if (fileName === 'jest.config.js') testingFrameworks.push('jest');
-      if (fileName === 'cypress.json') testingFrameworks.push('cypress');
-      if (fileName === 'playwright.config.js') testingFrameworks.push('playwright');
-      if (fileName === 'pytest.ini') testingFrameworks.push('pytest');
     }
 
-    return [...new Set(testingFrameworks)];
+    return testingFrameworks;
   }
 
   /**
@@ -604,42 +475,38 @@ class LanguageDetection {
    */
   getLanguageSuggestions(language, files) {
     const suggestions = [];
-    
+
     switch (language) {
       case 'javascript':
-      case 'typescript':
         if (!files.some(f => f.name === 'package.json')) {
           suggestions.push('Consider adding a package.json file for dependency management');
         }
-        if (!files.some(f => f.name.includes('test') || f.name.includes('spec'))) {
-          suggestions.push('Add unit tests using Jest or similar testing framework');
+        if (!files.some(f => f.name.includes('test'))) {
+          suggestions.push('Consider adding unit tests (Jest, Mocha, etc.)');
         }
         break;
-        
+
+      case 'typescript':
+        if (!files.some(f => f.name === 'tsconfig.json')) {
+          suggestions.push('Consider adding a tsconfig.json file for TypeScript configuration');
+        }
+        break;
+
       case 'python':
         if (!files.some(f => f.name === 'requirements.txt')) {
           suggestions.push('Consider adding a requirements.txt file for dependency management');
         }
-        if (!files.some(f => f.name === 'setup.py' || f.name === 'pyproject.toml')) {
-          suggestions.push('Add setup.py or pyproject.toml for package configuration');
-        }
         break;
-        
+
       case 'java':
-        if (!files.some(f => f.name === 'pom.xml' || f.name === 'build.gradle')) {
-          suggestions.push('Consider using Maven (pom.xml) or Gradle (build.gradle) for build management');
-        }
-        break;
-        
-      case 'csharp':
-        if (!files.some(f => f.name.endsWith('.csproj') || f.name.endsWith('.sln'))) {
-          suggestions.push('Consider adding project files (.csproj) or solution files (.sln)');
+        if (!files.some(f => f.name === 'pom.xml') && !files.some(f => f.name === 'build.gradle')) {
+          suggestions.push('Consider adding a build tool (Maven or Gradle)');
         }
         break;
     }
-    
+
     return suggestions;
   }
 }
 
-module.exports = new LanguageDetection();
+export default new LanguageDetection();

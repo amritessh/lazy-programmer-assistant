@@ -1,7 +1,7 @@
-const express = require('express');
-const { body, param, query, validationResult } = require('express-validator');
-const { createClient } = require('@supabase/supabase-js');
-const axios = require('axios');
+import express from 'express';
+import { body, param, query, validationResult } from 'express-validator';
+import { createClient } from '@supabase/supabase-js';
+import axios from 'axios';
 
 const router = express.Router();
 
@@ -383,4 +383,4 @@ router.delete(
   }
 );
 
-module.exports = router;
+export default router;

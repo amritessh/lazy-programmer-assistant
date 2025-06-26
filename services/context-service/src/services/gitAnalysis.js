@@ -1,11 +1,12 @@
-const simpleGit = require('simple-git');
-const path = require('path');
-const fs = require('fs-extra');
+import simpleGit from 'simple-git';
+import path from 'path';
+import fs from 'fs-extra';
 
 class GitAnalysis {
   constructor() {
     this.maxCommits = 100;
     this.maxDaysBack = 30;
+    this.git = simpleGit();
   }
 
   /**
@@ -465,4 +466,4 @@ class GitAnalysis {
   }
 }
 
-module.exports = new GitAnalysis();
+export default new GitAnalysis();

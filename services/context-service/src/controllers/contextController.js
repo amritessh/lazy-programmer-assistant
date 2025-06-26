@@ -1,6 +1,6 @@
-const contextEngine = require('../services/contextEngine');
-const fileScanner = require('../services/fileScanner');
-const gitAnalysis = require('../services/gitAnalysis');
+import contextEngine from '../services/contextEngine.js';
+import fileScanner from '../services/fileScanner.js';
+import gitAnalysis from '../services/gitAnalysis.js';
 
 const contextController = {
   /**
@@ -195,4 +195,4 @@ const contextController = {
   }
 };
 
-module.exports = contextController;
+export default contextController;

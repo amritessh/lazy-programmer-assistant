@@ -1,7 +1,7 @@
-const fs = require('fs-extra');
-const path = require('path');
-const glob = require('glob');
-const mime = require('mime-types');
+import fs from 'fs-extra';
+import path from 'path';
+import { glob } from 'glob';
+import mime from 'mime-types';
 
 class FileScanner {
   constructor() {
@@ -129,38 +129,31 @@ class FileScanner {
    * Use glob to find files with patterns and limits
    */
   async globFiles(basePath, pattern, options) {
-    return new Promise((resolve, reject) => {
-      const { ignore, maxDepth, maxFiles } = options;
+    const { ignore, maxDepth, maxFiles } = options;
 
-      const globOptions = {
-        cwd: basePath,
-        ignore,
-        nodir: true, // Only files, not directories
-        realpath: false,
-        follow: false // Don't follow symlinks
-      };
+    const globOptions = {
+      cwd: basePath,
+      ignore,
+      nodir: true, // Only files, not directories
+      realpath: false,
+      follow: false // Don't follow symlinks
+    };
 
-      if (maxDepth) {
-        // Limit depth by modifying pattern
-        const depthPattern = '*'.repeat(maxDepth).split('').join('/');
-        pattern = pattern.replace('**', depthPattern);
-      }
+    if (maxDepth) {
+      // Limit depth by modifying pattern
+      const depthPattern = '*'.repeat(maxDepth).split('').join('/');
+      pattern = pattern.replace('**', depthPattern);
+    }
 
-      glob(pattern, globOptions, (err, files) => {
-        if (err) {
-          reject(err);
-          return;
-        }
+    let files = await glob(pattern, globOptions);
 
-        // Limit number of files
-        if (maxFiles && files.length > maxFiles) {
-          console.warn(`Found ${files.length} files, limiting to ${maxFiles}`);
-          files = files.slice(0, maxFiles);
-        }
+    // Limit number of files
+    if (maxFiles && files.length > maxFiles) {
+      console.warn(`Found ${files.length} files, limiting to ${maxFiles}`);
+      files = files.slice(0, maxFiles);
+    }
 
-        resolve(files);
-      });
-    });
+    return files;
   }
 
   /**
@@ -208,81 +201,21 @@ class FileScanner {
   }
 
   /**
-   * Determine if we should include file content
+   * Determine if file content should be included
    */
   shouldIncludeContent(fileInfo) {
-    // Skip binary files
-    if (this.isBinaryFile(fileInfo)) {
-      return false;
-    }
-
-    // Skip large files
+    // Check file size
     if (fileInfo.size > this.maxContentSize) {
       return false;
     }
 
-    // Include files with relevant extensions
-    return this.contentExtensions.includes(fileInfo.extension);
-  }
-
-  /**
-   * Check if file is likely binary
-   */
-  isBinaryFile(fileInfo) {
-    const binaryExtensions = [
-      '.jpg',
-      '.jpeg',
-      '.png',
-      '.gif',
-      '.bmp',
-      '.ico',
-      '.svg',
-      '.pdf',
-      '.doc',
-      '.docx',
-      '.xls',
-      '.xlsx',
-      '.ppt',
-      '.pptx',
-      '.zip',
-      '.tar',
-      '.gz',
-      '.7z',
-      '.rar',
-      '.mp3',
-      '.mp4',
-      '.avi',
-      '.mov',
-      '.wmv',
-      '.exe',
-      '.dll',
-      '.so',
-      '.dylib',
-      '.woff',
-      '.woff2',
-      '.ttf',
-      '.eot'
-    ];
-
-    const binaryMimeTypes = [
-      'image/',
-      'video/',
-      'audio/',
-      'application/pdf',
-      'application/zip',
-      'application/octet-stream'
-    ];
-
-    // Check extension
-    if (binaryExtensions.includes(fileInfo.extension)) {
+    // Check if it's a content extension
+    if (this.contentExtensions.includes(fileInfo.extension)) {
       return true;
     }
 
-    // Check MIME type
-    if (
-      fileInfo.mimeType &&
-      binaryMimeTypes.some(type => fileInfo.mimeType.startsWith(type))
-    ) {
+    // Check mime type
+    if (fileInfo.mimeType && fileInfo.mimeType.startsWith('text/')) {
       return true;
     }
 
@@ -290,145 +223,169 @@ class FileScanner {
   }
 
   /**
-   * Read file content with size limits and encoding detection
+   * Check if file is binary
+   */
+  isBinaryFile(fileInfo) {
+    // Check mime type first
+    if (fileInfo.mimeType && !fileInfo.mimeType.startsWith('text/')) {
+      return true;
+    }
+
+    // Check file extension
+    const binaryExtensions = [
+      '.exe',
+      '.dll',
+      '.so',
+      '.dylib',
+      '.bin',
+      '.dat',
+      '.jpg',
+      '.jpeg',
+      '.png',
+      '.gif',
+      '.bmp',
+      '.ico',
+      '.mp3',
+      '.mp4',
+      '.avi',
+      '.mov',
+      '.wav',
+      '.flac',
+      '.zip',
+      '.tar',
+      '.gz',
+      '.rar',
+      '.7z',
+      '.pdf',
+      '.doc',
+      '.docx',
+      '.xls',
+      '.xlsx',
+      '.db',
+      '.sqlite',
+      '.sqlite3'
+    ];
+
+    return binaryExtensions.includes(fileInfo.extension);
+  }
+
+  /**
+   * Read file content safely
    */
   async readFileContent(filePath, fileSize) {
     try {
-      // Skip very large files
+      // Check file size
       if (fileSize > this.maxContentSize) {
+        console.warn(`File too large to read: ${filePath}`);
         return null;
       }
 
-      // Read file
-      let content = await fs.readFile(filePath, 'utf8');
+      // Read file as buffer first
+      const buffer = await fs.readFile(filePath);
 
-      // Check for potential binary content by looking for null bytes
-      if (content.includes('\0')) {
+      // Check if it's a text file
+      if (!this.isTextBuffer(buffer)) {
+        console.warn(`Binary file detected: ${filePath}`);
         return null;
       }
 
-      // Truncate very long content
-      const maxContentLength = 50000; // 50KB of text
-      if (content.length > maxContentLength) {
-        content =
-          content.substring(0, maxContentLength) + '\n\n... [truncated]';
-      }
-
-      return content;
+      // Convert to string
+      return buffer.toString('utf8');
     } catch (error) {
-      // Might be binary or encoding issue
-      if (error.code === 'EISDIR') {
-        return null;
-      }
-
-      // Try reading as buffer to check if it's text
-      try {
-        const buffer = await fs.readFile(filePath);
-        if (this.isTextBuffer(buffer)) {
-          return buffer.toString('utf8', 0, Math.min(buffer.length, 50000));
-        }
-      } catch (bufferError) {
-        // Give up
-      }
-
+      console.warn(`Error reading file ${filePath}:`, error.message);
       return null;
     }
   }
 
   /**
-   * Check if buffer contains text (not binary)
+   * Check if buffer contains text
    */
   isTextBuffer(buffer) {
     // Check for null bytes (common in binary files)
-    for (let i = 0; i < Math.min(buffer.length, 1000); i++) {
-      if (buffer[i] === 0) {
-        return false;
-      }
+    if (buffer.includes(0)) {
+      return false;
     }
 
-    // Check for high percentage of printable ASCII characters
+    // Check for high percentage of printable characters
     let printableCount = 0;
-    const sampleSize = Math.min(buffer.length, 1000);
+    const totalBytes = Math.min(buffer.length, 1000); // Check first 1000 bytes
 
-    for (let i = 0; i < sampleSize; i++) {
+    for (let i = 0; i < totalBytes; i++) {
       const byte = buffer[i];
-      if (
-        (byte >= 32 && byte <= 126) ||
-        byte === 9 ||
-        byte === 10 ||
-        byte === 13
-      ) {
+      // Printable ASCII characters (32-126) plus common whitespace (9, 10, 13)
+      if ((byte >= 32 && byte <= 126) || [9, 10, 13].includes(byte)) {
         printableCount++;
       }
     }
 
-    return printableCount / sampleSize > 0.85; // 85% printable characters
+    const printableRatio = printableCount / totalBytes;
+    return printableRatio > 0.8; // 80% printable characters
   }
 
   /**
-   * Get quick directory stats without full scan
+   * Get directory statistics
    */
   async getDirectoryStats(dirPath) {
     try {
       const stats = await fs.stat(dirPath);
-      if (!stats.isDirectory()) {
-        throw new Error('Not a directory');
-      }
-
-      // Get quick counts
-      const entries = await fs.readdir(dirPath);
-      let fileCount = 0;
-      let dirCount = 0;
-
-      for (const entry of entries.slice(0, 100)) {
-        // Sample first 100 entries
-        try {
-          const entryPath = path.join(dirPath, entry);
-          const entryStat = await fs.stat(entryPath);
-          if (entryStat.isFile()) {
-            fileCount++;
-          } else if (entryStat.isDirectory()) {
-            dirCount++;
-          }
-        } catch (e) {
-          // Skip problematic entries
-        }
-      }
+      const files = await this.scanDirectory(dirPath, { maxFiles: 100 });
 
       return {
-        totalEntries: entries.length,
-        estimatedFiles: fileCount,
-        estimatedDirectories: dirCount,
-        lastModified: stats.mtime.toISOString()
+        path: dirPath,
+        totalFiles: files.length,
+        totalSize: files.reduce((sum, file) => sum + file.size, 0),
+        lastModified: stats.mtime.toISOString(),
+        fileTypes: this.countFileTypes(files)
       };
     } catch (error) {
-      throw new Error(`Failed to get directory stats: ${error.message}`);
+      console.error('Error getting directory stats:', error);
+      throw error;
     }
   }
 
   /**
-   * Scan specific files by paths
+   * Count file types in a list of files
+   */
+  countFileTypes(files) {
+    const typeCount = {};
+    files.forEach(file => {
+      const ext = file.extension;
+      typeCount[ext] = (typeCount[ext] || 0) + 1;
+    });
+    return typeCount;
+  }
+
+  /**
+   * Scan specific files
    */
   async scanFiles(filePaths, includeContent = false) {
     const results = [];
 
     for (const filePath of filePaths) {
       try {
-        const fullPath = path.resolve(filePath);
-        const relativePath = path.basename(filePath);
-        const basePath = path.dirname(fullPath);
+        const stats = await fs.stat(filePath);
+        const fileInfo = {
+          path: filePath,
+          name: path.basename(filePath),
+          extension: path.extname(filePath).toLowerCase(),
+          size: stats.size,
+          lastModified: stats.mtime.toISOString(),
+          isDirectory: stats.isDirectory(),
+          mimeType: mime.lookup(filePath) || 'unknown'
+        };
 
-        const fileInfo = await this.processFile(
-          basePath,
-          relativePath,
-          includeContent
-        );
-        if (fileInfo) {
-          results.push({
-            ...fileInfo,
-            path: fullPath // Use full path for individual files
-          });
+        if (
+          includeContent &&
+          !stats.isDirectory() &&
+          this.shouldIncludeContent(fileInfo)
+        ) {
+          const content = await this.readFileContent(filePath, stats.size);
+          if (content !== null) {
+            fileInfo.content = content;
+          }
         }
+
+        results.push(fileInfo);
       } catch (error) {
         console.warn(`Error scanning file ${filePath}:`, error.message);
       }
@@ -438,36 +395,68 @@ class FileScanner {
   }
 
   /**
-   * Find files matching specific patterns
+   * Find files matching patterns
    */
   async findFiles(basePath, patterns, options = {}) {
-    const results = [];
+    const { ignore = [], maxFiles = 1000 } = options;
+    const allIgnorePatterns = [...this.defaultIgnorePatterns, ...ignore];
 
+    const results = [];
     for (const pattern of patterns) {
       try {
-        const files = await this.globFiles(basePath, pattern, {
-          ignore: options.ignore || this.defaultIgnorePatterns,
-          maxDepth: options.maxDepth || 5,
-          maxFiles: options.maxFiles || 1000
+        const files = await glob(pattern, {
+          cwd: basePath,
+          ignore: allIgnorePatterns,
+          nodir: true,
+          realpath: false
         });
 
-        for (const file of files) {
-          const fileInfo = await this.processFile(
-            basePath,
-            file,
-            options.includeContent
-          );
-          if (fileInfo) {
-            results.push(fileInfo);
-          }
-        }
+        results.push(...files);
       } catch (error) {
         console.warn(`Error with pattern ${pattern}:`, error.message);
       }
     }
 
-    return results;
+    // Remove duplicates and limit results
+    const uniqueFiles = [...new Set(results)];
+    return uniqueFiles.slice(0, maxFiles);
+  }
+
+  /**
+   * Scan project structure (simplified version for now)
+   */
+  async scanProjectStructure(projectPath) {
+    try {
+      // For now, return a mock structure
+      return {
+        totalFiles: 150,
+        directories: ['src', 'public', 'components', 'services'],
+        fileTypes: {
+          '.js': 45,
+          '.jsx': 25,
+          '.ts': 15,
+          '.tsx': 10,
+          '.json': 5,
+          '.md': 3,
+          '.css': 20,
+          '.html': 2
+        },
+        structure: {
+          src: {
+            files: [],
+            subdirs: {
+              components: { files: [], subdirs: {} },
+              services: { files: [], subdirs: {} }
+            }
+          },
+          public: { files: [], subdirs: {} }
+        }
+      };
+    } catch (error) {
+      console.error('Error scanning project structure:', error);
+      throw error;
+    }
   }
 }
 
-module.exports = new FileScanner();
+export default new FileScanner();
