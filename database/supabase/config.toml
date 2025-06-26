@@ -39,13 +39,6 @@ double_confirm_changes = true
 # If enabled, users need to confirm their email address before signing in.
 enable_confirmations = false
 
-# Use pre-defined map of claims in JWT (email_verified, phone_verified, etc.)
-[auth.jwt]
-default_group_name = ""
-admin_group_name = ""
-aud = "authenticated"
-exp = 3600
-
 # Configure one of the supported SMS providers: `twilio`, `vonage`, `textlocal`, `firebase`
 [auth.sms]
 enable_signup = true
