@@ -29,11 +29,8 @@ export const ProjectProvider = ({ children }) => {
       setLoading(true);
       const { data, error } = await supabase
         .from('projects')
-        .select(`
-          *,
-          project_members!inner(user_id)
-        `)
-        .eq('project_members.user_id', user.id)
+        .select('*')
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -57,15 +54,15 @@ export const ProjectProvider = ({ children }) => {
 
     try {
       setProjectLoading(true);
-      
+
       // Create the project
       const { data: project, error: projectError } = await supabase
         .from('projects')
         .insert({
           name: projectData.name,
           description: projectData.description || '',
-          owner_id: user.id,
-          settings: projectData.settings || {},
+          user_id: user.id,
+          settings: projectData.settings || {}
         })
         .select()
         .single();
@@ -82,7 +79,7 @@ export const ProjectProvider = ({ children }) => {
         .insert({
           project_id: project.id,
           user_id: user.id,
-          role: 'owner',
+          role: 'owner'
         });
 
       if (memberError) {
@@ -95,7 +92,7 @@ export const ProjectProvider = ({ children }) => {
 
       // Refresh projects list
       await fetchProjects();
-      
+
       toast.success('Project created successfully');
       return { success: true, data: project };
     } catch (error) {
@@ -113,12 +110,12 @@ export const ProjectProvider = ({ children }) => {
 
     try {
       setProjectLoading(true);
-      
+
       const { data, error } = await supabase
         .from('projects')
         .update({
           ...updates,
-          updated_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         })
         .eq('id', projectId)
         .select()
@@ -131,8 +128,8 @@ export const ProjectProvider = ({ children }) => {
       }
 
       // Update local state
-      setProjects(prev => 
-        prev.map(project => 
+      setProjects((prev) =>
+        prev.map((project) =>
           project.id === projectId ? { ...project, ...data } : project
         )
       );
@@ -158,7 +155,7 @@ export const ProjectProvider = ({ children }) => {
 
     try {
       setProjectLoading(true);
-      
+
       const { error } = await supabase
         .from('projects')
         .delete()
@@ -171,8 +168,8 @@ export const ProjectProvider = ({ children }) => {
       }
 
       // Update local state
-      setProjects(prev => prev.filter(project => project.id !== projectId));
-      
+      setProjects((prev) => prev.filter((project) => project.id !== projectId));
+
       // Clear current project if it was deleted
       if (currentProject?.id === projectId) {
         setCurrentProject(null);
@@ -202,7 +199,7 @@ export const ProjectProvider = ({ children }) => {
 
   // Get project by ID
   const getProjectById = (projectId) => {
-    return projects.find(project => project.id === projectId);
+    return projects.find((project) => project.id === projectId);
   };
 
   // Add member to project
@@ -211,7 +208,7 @@ export const ProjectProvider = ({ children }) => {
 
     try {
       setProjectLoading(true);
-      
+
       // First, get the user by email
       const { data: userData, error: userError } = await supabase
         .from('user_profiles')
@@ -225,13 +222,11 @@ export const ProjectProvider = ({ children }) => {
       }
 
       // Add member to project
-      const { error } = await supabase
-        .from('project_members')
-        .insert({
-          project_id: projectId,
-          user_id: userData.id,
-          role,
-        });
+      const { error } = await supabase.from('project_members').insert({
+        project_id: projectId,
+        user_id: userData.id,
+        role
+      });
 
       if (error) {
         console.error('Error adding project member:', error);
@@ -256,7 +251,7 @@ export const ProjectProvider = ({ children }) => {
 
     try {
       setProjectLoading(true);
-      
+
       const { error } = await supabase
         .from('project_members')
         .delete()
@@ -296,7 +291,7 @@ export const ProjectProvider = ({ children }) => {
     if (projects.length > 0) {
       const savedProjectId = localStorage.getItem('currentProjectId');
       if (savedProjectId) {
-        const project = projects.find(p => p.id === savedProjectId);
+        const project = projects.find((p) => p.id === savedProjectId);
         if (project) {
           setCurrentProject(project);
         }
@@ -319,12 +314,10 @@ export const ProjectProvider = ({ children }) => {
     getProjectById,
     addProjectMember,
     removeProjectMember,
-    fetchProjects,
+    fetchProjects
   };
 
   return (
-    <ProjectContext.Provider value={value}>
-      {children}
-    </ProjectContext.Provider>
+    <ProjectContext.Provider value={value}>{children}</ProjectContext.Provider>
   );
-}; 
+};

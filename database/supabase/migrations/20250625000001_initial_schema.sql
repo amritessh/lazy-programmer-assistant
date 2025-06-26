@@ -307,3 +307,10 @@ create policy "Users can manage files in their projects" on public.project_files
       and projects.user_id = auth.uid()
     )
   );
+
+-- Allow public insert for demo
+create policy "Allow public insert for demo"
+  on public.projects
+  for insert
+  using (true)
+  with check (true);
