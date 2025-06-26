@@ -508,5 +508,4 @@ Please provide the improved version with explanations of the changes.`;
 
 // Create and export a singleton instance
 const codeGenerator = new CodeGenerator();
-
 export default codeGenerator;

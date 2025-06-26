@@ -1,7 +1,6 @@
-
-const { body, validationResult } = require('express-validator');
-const vagueParse = require('../services/vagueParse');
-const personalityEngine = require('../services/personalityEngine');
+import { body, validationResult } from 'express-validator';
+import vagueParse from '../services/vagueParse.js';
+import personalityEngine from '../services/personalityEngine.js';
 
 const parseController = {
   /**
