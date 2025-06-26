@@ -1,5 +1,5 @@
 // services/ai-service/src/services/openaiClient.js
-const OpenAI = require('openai');
+import OpenAI from 'openai';
 
 class OpenAIClient {
   constructor() {
@@ -198,43 +198,43 @@ Your debugging approach:
       // Calculate delay with exponential backoff
       const delay = this.baseDelay * Math.pow(2, attempt - 1);
 
-      console.warn(
-        `OpenAI API call failed (attempt ${attempt}/${this
-          .maxRetries}), retrying in ${delay}ms:`,
-        error.message
-      );
-
+      console.log(`Retry attempt ${attempt} after ${delay}ms delay`);
       await this.sleep(delay);
+
       return this.withRetry(fn, attempt + 1);
     }
   }
 
   /**
-   * Check if error should not be retried
+   * Determine if an error should not be retried
    */
   shouldNotRetry(error) {
-    // Don't retry on authentication errors, invalid requests, etc.
-    const nonRetryableStatuses = [400, 401, 403, 404];
-    return error.status && nonRetryableStatuses.includes(error.status);
+    // Don't retry on authentication errors, rate limits, or invalid requests
+    return (
+      error.status === 401 ||
+      error.status === 403 ||
+      error.status === 429 ||
+      error.status === 400
+    );
   }
 
   /**
-   * Sleep utility for retry delays
+   * Sleep utility
    */
   sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**
-   * Get token count estimate
+   * Estimate token count (rough approximation)
    */
   estimateTokens(text) {
-    // Rough estimation: 1 token ≈ 4 characters for English text
+    // Rough approximation: 1 token ≈ 4 characters
     return Math.ceil(text.length / 4);
   }
 
   /**
-   * Truncate text to fit token limits
+   * Truncate text to fit within token limit
    */
   truncateToTokenLimit(text, maxTokens = 4000) {
     const estimatedTokens = this.estimateTokens(text);
@@ -243,34 +243,34 @@ Your debugging approach:
       return text;
     }
 
-    // Truncate to approximately fit within token limit
+    // Remove characters to fit within token limit
     const maxChars = maxTokens * 4;
-    return text.substring(0, maxChars) + '\n\n[... truncated for length ...]';
+    return text.substring(0, maxChars) + '...';
   }
 
   /**
-   * Health check for OpenAI API
+   * Health check for the OpenAI client
    */
   async healthCheck() {
     try {
-      const response = await this.createChatCompletion({
-        model: 'gpt-3.5-turbo',
-        messages: [{ role: 'user', content: 'Hello' }],
-        max_tokens: 5
-      });
-
+      // Try a simple API call to test connectivity
+      const response = await this.client.models.list();
       return {
         status: 'healthy',
-        model: 'gpt-3.5-turbo',
-        response: response.choices[0].message.content
+        message: 'OpenAI API connection successful',
+        models: response.data.length
       };
     } catch (error) {
       return {
         status: 'unhealthy',
-        error: error.message
+        message: error.message,
+        error: error
       };
     }
   }
 }
 
-module.exports = new OpenAIClient();
+// Create and export a singleton instance
+const openaiClient = new OpenAIClient();
+
+export default openaiClient;
