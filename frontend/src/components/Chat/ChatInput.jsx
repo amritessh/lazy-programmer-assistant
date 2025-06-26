@@ -1,6 +1,5 @@
 // frontend/src/components/Chat/ChatInput.jsx
 import React, { useState, useRef, useEffect } from 'react';
-import { TextField, IconButton, Box, Tooltip, Chip, Fade } from '@mui/material';
 import {
   Send as SendIcon,
   AttachFile as AttachFileIcon,
@@ -17,12 +16,23 @@ const ChatInput = ({
 }) => {
   const [message, setMessage] = useState('');
   const [isFocused, setIsFocused] = useState(false);
-  const inputRef = useRef(null);
+  const textareaRef = useRef(null);
 
-  // Auto-resize and focus management
+  // Auto-resize textarea
   useEffect(() => {
-    if (inputRef.current && !disabled) {
-      inputRef.current.focus();
+    const textarea = textareaRef.current;
+    if (textarea) {
+      textarea.style.height = 'auto';
+      const scrollHeight = textarea.scrollHeight;
+      const maxHeight = maxRows * 24; // Approximate line height
+      textarea.style.height = Math.min(scrollHeight, maxHeight) + 'px';
+    }
+  }, [message, maxRows]);
+
+  // Auto-focus when not disabled
+  useEffect(() => {
+    if (textareaRef.current && !disabled) {
+      textareaRef.current.focus();
     }
   }, [disabled]);
 
@@ -57,211 +67,137 @@ const ChatInput = ({
 
   const handleSuggestionClick = (suggestion) => {
     setMessage(suggestion);
-    inputRef.current?.focus();
+    textareaRef.current?.focus();
   };
 
   return (
-    <Box sx={{ width: '100%' }}>
+    <div className='w-full'>
       {/* Quick suggestions when input is empty and focused */}
-      <Fade in={isFocused && message.length === 0}>
-        <Box sx={{ mb: 1, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+      {isFocused && message.length === 0 && (
+        <div className='mb-3 flex flex-wrap gap-2'>
           {quickSuggestions.map((suggestion, index) => (
-            <motion.div
+            <motion.button
               key={suggestion}
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: index * 0.1 }}
+              onClick={() => handleSuggestionClick(suggestion)}
+              className='px-3 py-1 text-xs bg-dark-700 hover:bg-primary-500 text-dark-300 hover:text-white border border-dark-600 hover:border-primary-500 rounded-full transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-dark-800'
             >
-              <Chip
-                label={suggestion}
-                size='small'
-                variant='outlined'
-                clickable
-                onClick={() => handleSuggestionClick(suggestion)}
-                sx={{
-                  fontSize: '0.7rem',
-                  height: 24,
-                  '&:hover': {
-                    backgroundColor: 'primary.main',
-                    color: 'primary.contrastText'
-                  }
-                }}
-              />
-            </motion.div>
+              {suggestion}
+            </motion.button>
           ))}
-        </Box>
-      </Fade>
+        </div>
+      )}
 
-      {/* Main input area */}
-      <Box
-        component='form'
-        onSubmit={handleSubmit}
-        sx={{
-          display: 'flex',
-          alignItems: 'flex-end',
-          gap: 1,
-          position: 'relative'
-        }}
-      >
-        {/* Text input */}
-        <TextField
-          ref={inputRef}
-          fullWidth
-          multiline={multiline}
-          maxRows={maxRows}
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          onKeyPress={handleKeyPress}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
-          placeholder={placeholder}
-          disabled={disabled}
-          variant='outlined'
-          sx={{
-            '& .MuiOutlinedInput-root': {
-              borderRadius: 3,
-              backgroundColor: 'background.paper',
-              transition: 'all 0.2s ease-in-out',
-              '&:hover': {
-                backgroundColor: 'action.hover'
-              },
-              '&.Mui-focused': {
-                backgroundColor: 'background.paper',
-                '& .MuiOutlinedInput-notchedOutline': {
-                  borderColor: 'primary.main',
-                  borderWidth: 2
-                }
-              }
-            },
-            '& .MuiInputBase-input': {
-              padding: '12px 16px',
-              fontSize: '1rem',
-              lineHeight: 1.5
-            }
-          }}
-          InputProps={{
-            endAdornment: (
-              <Box
-                sx={{ display: 'flex', alignItems: 'center', gap: 0.5, ml: 1 }}
+      {/* Main input form */}
+      <form onSubmit={handleSubmit} className='flex items-end gap-3 relative'>
+        {/* Text input container */}
+        <div className='flex-1 relative'>
+          <textarea
+            ref={textareaRef}
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={handleKeyPress}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            placeholder={placeholder}
+            disabled={disabled}
+            rows={1}
+            className={`
+              w-full px-4 py-3 pr-24 bg-dark-800 border border-dark-600 rounded-2xl
+              text-dark-100 placeholder-dark-400 resize-none
+              focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
+              hover:border-dark-500 transition-all duration-200
+              disabled:opacity-50 disabled:cursor-not-allowed
+              ${isFocused ? 'bg-dark-700' : ''}
+            `}
+            style={{
+              minHeight: '48px',
+              maxHeight: `${maxRows * 24}px`
+            }}
+          />
+
+          {/* Input actions */}
+          <div className='absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1'>
+            {/* Character count for long messages */}
+            {message.length > 100 && (
+              <span
+                className={`text-xs px-2 py-1 rounded-full border ${
+                  message.length > 1800
+                    ? 'text-orange-400 border-orange-400/30 bg-orange-400/10'
+                    : 'text-dark-400 border-dark-600 bg-dark-700'
+                }`}
               >
-                {/* Character count for long messages */}
-                {message.length > 100 && (
-                  <Chip
-                    label={`${message.length}/2000`}
-                    size='small'
-                    variant='outlined'
-                    sx={{
-                      fontSize: '0.7rem',
-                      height: 20,
-                      color:
-                        message.length > 1800
-                          ? 'warning.main'
-                          : 'text.secondary'
-                    }}
-                  />
-                )}
+                {message.length}/2000
+              </span>
+            )}
 
-                {/* File attachment button */}
-                <Tooltip title='Attach files (coming soon)'>
-                  <IconButton
-                    size='small'
-                    disabled
-                    sx={{ color: 'text.secondary' }}
-                  >
-                    <AttachFileIcon fontSize='small' />
-                  </IconButton>
-                </Tooltip>
+            {/* File attachment button */}
+            <button
+              type='button'
+              disabled
+              className='p-1 text-dark-500 hover:text-dark-400 transition-colors disabled:opacity-30'
+              title='Attach files (coming soon)'
+            >
+              <AttachFileIcon className='text-sm' />
+            </button>
 
-                {/* Emoji button */}
-                <Tooltip title='Add emoji (coming soon)'>
-                  <IconButton
-                    size='small'
-                    disabled
-                    sx={{ color: 'text.secondary' }}
-                  >
-                    <EmojiIcon fontSize='small' />
-                  </IconButton>
-                </Tooltip>
-              </Box>
-            )
-          }}
-        />
+            {/* Emoji button */}
+            <button
+              type='button'
+              disabled
+              className='p-1 text-dark-500 hover:text-dark-400 transition-colors disabled:opacity-30'
+              title='Add emoji (coming soon)'
+            >
+              <EmojiIcon className='text-sm' />
+            </button>
+          </div>
+        </div>
 
         {/* Send button */}
-        <Tooltip
+        <button
+          type='submit'
+          disabled={!message.trim() || disabled}
+          className={`
+            w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200
+            focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-800
+            ${
+              message.trim() && !disabled
+                ? 'bg-gradient-primary text-white shadow-lg hover:shadow-glow-primary focus:ring-primary-500'
+                : 'bg-dark-700 text-dark-500 cursor-not-allowed'
+            }
+          `}
           title={message.trim() ? 'Send message (Enter)' : 'Type a message'}
         >
-          <span>
-            <IconButton
-              type='submit'
-              disabled={!message.trim() || disabled}
-              color='primary'
-              sx={{
-                bgcolor:
-                  message.trim() && !disabled
-                    ? 'primary.main'
-                    : 'action.disabled',
-                color:
-                  message.trim() && !disabled
-                    ? 'primary.contrastText'
-                    : 'text.disabled',
-                width: 48,
-                height: 48,
-                '&:hover': {
-                  bgcolor:
-                    message.trim() && !disabled
-                      ? 'primary.dark'
-                      : 'action.disabled'
-                },
-                '&:disabled': {
-                  bgcolor: 'action.disabled'
-                },
-                transition: 'all 0.2s ease-in-out'
-              }}
-            >
-              <SendIcon />
-            </IconButton>
-          </span>
-        </Tooltip>
-      </Box>
+          <SendIcon />
+        </button>
+      </form>
 
       {/* Input hints */}
-      <Fade in={isFocused}>
-        <Box
-          sx={{
-            mt: 1,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center'
-          }}
+      {isFocused && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className='mt-3 flex justify-between items-center'
         >
-          <Box sx={{ display: 'flex', gap: 2 }}>
-            <Chip
-              label='Enter to send'
-              size='small'
-              variant='outlined'
-              sx={{ fontSize: '0.7rem', height: 20 }}
-            />
-            <Chip
-              label='Shift+Enter for new line'
-              size='small'
-              variant='outlined'
-              sx={{ fontSize: '0.7rem', height: 20 }}
-            />
-          </Box>
+          <div className='flex gap-4'>
+            <span className='text-xs px-2 py-1 bg-dark-700 text-dark-400 rounded border border-dark-600'>
+              Enter to send
+            </span>
+            <span className='text-xs px-2 py-1 bg-dark-700 text-dark-400 rounded border border-dark-600'>
+              Shift+Enter for new line
+            </span>
+          </div>
 
           {message.length > 1800 && (
-            <Chip
-              label='Message getting long!'
-              size='small'
-              color='warning'
-              variant='outlined'
-              sx={{ fontSize: '0.7rem', height: 20 }}
-            />
+            <span className='text-xs px-2 py-1 bg-orange-500/20 text-orange-400 rounded border border-orange-500/30'>
+              Message getting long!
+            </span>
           )}
-        </Box>
-      </Fade>
-    </Box>
+        </motion.div>
+      )}
+    </div>
   );
 };
 
