@@ -143,17 +143,12 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Sign up with email
-  const signUp = async (email, password, fullName) => {
+  const signUp = async (email, password) => {
     try {
       setLoading(true);
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        options: {
-          data: {
-            full_name: fullName,
-          },
-        },
       });
 
       if (error) {
@@ -161,7 +156,7 @@ export const AuthProvider = ({ children }) => {
         return { success: false, error };
       }
 
-      toast.success('Check your email to confirm your account!');
+      toast.success('Account created successfully! Please check your email to verify your account.');
       return { success: true, data };
     } catch (error) {
       console.error('Sign up error:', error);
@@ -221,11 +216,11 @@ export const AuthProvider = ({ children }) => {
   // Sign out
   const signOut = async () => {
     try {
-      setLoading(true);
       const { error } = await supabase.auth.signOut();
-
+      
       if (error) {
-        toast.error(error.message);
+        console.error('Sign out error:', error);
+        toast.error('Error signing out');
         return { success: false, error };
       }
 
@@ -238,16 +233,14 @@ export const AuthProvider = ({ children }) => {
       console.error('Sign out error:', error);
       toast.error('An unexpected error occurred');
       return { success: false, error };
-    } finally {
-      setLoading(false);
     }
   };
 
-  // Update profile
+  // Update user profile
   const updateProfile = async (updates) => {
     try {
-      if (!user) return { success: false, error: 'No user logged in' };
-
+      setLoading(true);
+      
       const { data, error } = await supabase
         .from('user_profiles')
         .update({
@@ -259,6 +252,7 @@ export const AuthProvider = ({ children }) => {
         .single();
 
       if (error) {
+        console.error('Error updating profile:', error);
         toast.error('Failed to update profile');
         return { success: false, error };
       }
@@ -267,9 +261,11 @@ export const AuthProvider = ({ children }) => {
       toast.success('Profile updated successfully');
       return { success: true, data };
     } catch (error) {
-      console.error('Update profile error:', error);
+      console.error('Error in updateProfile:', error);
       toast.error('An unexpected error occurred');
       return { success: false, error };
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -291,8 +287,6 @@ export const AuthProvider = ({ children }) => {
     loading,
     signIn,
     signUp,
-    signInWithGitHub,
-    signInWithGoogle,
     signOut,
     updateProfile,
     getAuthHeaders,

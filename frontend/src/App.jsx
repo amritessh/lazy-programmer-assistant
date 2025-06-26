@@ -11,8 +11,8 @@ import { CssBaseline, Box } from '@mui/material';
 import { Toaster } from 'react-hot-toast';
 
 // Contexts
-import { AuthProvider } from '@contexts/AuthContext';
-import { ProjectProvider } from '@contexts/ProjectContext';
+import { AuthProvider } from '@contexts/AuthContext.jsx';
+import { ProjectProvider } from '@contexts/ProjectContext.jsx';
 
 // Components
 import Layout from '@components/Layout/Layout';
